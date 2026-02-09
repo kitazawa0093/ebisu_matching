@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'booking_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -20,6 +23,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLogin = true; // true:ログイン false:新規登録
   bool _isLoading = false;
+  
+  // ✅ 画像選択用
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
 
   bool _validateInput() {
     if (_emailController.text.trim().isEmpty ||
@@ -36,6 +43,12 @@ class _LoginScreenState extends State<LoginScreen> {
           _contactController.text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('名前と連絡先を入力してください')),
+        );
+        return false;
+      }
+      if (_selectedImage == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('運転免許証またはマイナンバーカードの画像をアップロードしてください')),
         );
         return false;
       }
@@ -85,7 +98,21 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         // =========================
-        // ✅ Firestore に名前と連絡先を保存
+        // ✅ Firebase Storage に画像をアップロード
+        // =========================
+        String? imageUrl;
+        if (_selectedImage != null) {
+          final storageRef = FirebaseStorage.instance
+              .ref()
+              .child('id_documents')
+              .child('${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+          
+          await storageRef.putFile(_selectedImage!);
+          imageUrl = await storageRef.getDownloadURL();
+        }
+
+        // =========================
+        // ✅ Firestore に名前と連絡先、画像URLを保存
         // users/{uid}
         // =========================
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -93,6 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
           'email': email,
           'name': name,
           'contact': contact,
+          'idDocumentUrl': imageUrl,
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
@@ -135,6 +163,80 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // ✅ 画像選択メソッド
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('画像の選択に失敗しました: $e')),
+      );
+    }
+  }
+
+  // ✅ カメラで撮影
+  Future<void> _takePhoto() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
+      );
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('写真の撮影に失敗しました: $e')),
+      );
+    }
+  }
+
+  // ✅ 画像選択ダイアログ
+  Future<void> _showImageSourceDialog() async {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('画像を選択'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('ギャラリーから選択'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('カメラで撮影'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePhoto();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -170,6 +272,64 @@ class _LoginScreenState extends State<LoginScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 12),
+              
+              // ✅ 運転免許証/マイナンバーカードアップロード
+              const Text(
+                '運転免許証またはマイナンバーカード',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              
+              // 画像プレビュー
+              if (_selectedImage != null) ...[
+                Container(
+                  height: 200,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      _selectedImage!,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton.icon(
+                      onPressed: _showImageSourceDialog,
+                      icon: const Icon(Icons.edit),
+                      label: const Text('画像を変更'),
+                    ),
+                    const SizedBox(width: 16),
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _selectedImage = null;
+                        });
+                      },
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      label: const Text('削除', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                OutlinedButton.icon(
+                  onPressed: _showImageSourceDialog,
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('画像をアップロード'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
             ],
 
