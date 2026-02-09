@@ -17,9 +17,12 @@ class _LoginScreenState extends State<LoginScreen> {
   // ✅ 新規登録時に使う
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
+  String? _selectedGender; // 男性, 女性, その他, 回答しない
 
   bool _isLogin = true; // true:ログイン false:新規登録
   bool _isLoading = false;
+
+  static const List<String> _genderOptions = ['男性', '女性'];
 
   bool _validateInput() {
     if (_emailController.text.trim().isEmpty ||
@@ -39,6 +42,12 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return false;
       }
+      if (_selectedGender == null || _selectedGender!.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('性別を選択してください')),
+        );
+        return false;
+      }
     }
 
     return true;
@@ -53,16 +62,35 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text.trim();
     final name = _nameController.text.trim();
     final contact = _contactController.text.trim();
+    final gender = _selectedGender;
 
     try {
       if (_isLogin) {
         // =========================
         // ✅ ログイン
         // =========================
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
+        final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
+        final user = credential.user;
+        if (user != null) {
+          await user.reload();
+          final currentUser = FirebaseAuth.instance.currentUser;
+          if (currentUser != null && !currentUser.emailVerified) {
+            await FirebaseAuth.instance.signOut();
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'メールアドレスが未認証です。登録メールのリンクから認証してください。',
+                ),
+                duration: Duration(seconds: 5),
+              ),
+            );
+            return;
+          }
+        }
 
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -85,7 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         // =========================
-        // ✅ Firestore に名前と連絡先を保存
+        // ✅ Firestore に名前・連絡先・性別を保存
         // users/{uid}
         // =========================
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -93,18 +121,27 @@ class _LoginScreenState extends State<LoginScreen> {
           'email': email,
           'name': name,
           'contact': contact,
+          'gender': gender ?? '',
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
+        // =========================
+        // ✅ 確認メール送信（認証完了までログイン不可にする）
+        // =========================
+        await user.sendEmailVerification();
+
+        await FirebaseAuth.instance.signOut();
+
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('登録が完了しました！')),
+          const SnackBar(
+            content: Text(
+              '確認メールを送信しました。メール内のリンクから認証するとログインできます。',
+            ),
+            duration: Duration(seconds: 6),
+          ),
         );
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const BookingScreen()),
-        );
+        setState(() => _isLogin = true);
       }
     } on FirebaseAuthException catch (e) {
       String message = 'エラーが発生しました';
@@ -169,6 +206,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   labelText: '連絡先（電話番号など）',
                   border: OutlineInputBorder(),
                 ),
+              ),
+              const SizedBox(height: 12),
+              const Text('性別', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String>(
+                value: _selectedGender,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                ),
+                hint: const Text('選択してください'),
+                items: _genderOptions
+                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                    .toList(),
+                onChanged: (v) => setState(() => _selectedGender = v),
               ),
               const SizedBox(height: 12),
             ],
