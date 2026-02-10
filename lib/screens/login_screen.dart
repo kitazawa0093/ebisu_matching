@@ -81,11 +81,15 @@ class _LoginScreenState extends State<LoginScreen> {
             await FirebaseAuth.instance.signOut();
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
+              SnackBar(
+                content: const Text(
                   'メールアドレスが未認証です。登録メールのリンクから認証してください。',
                 ),
-                duration: Duration(seconds: 5),
+                duration: const Duration(seconds: 8),
+                action: SnackBarAction(
+                  label: '再送',
+                  onPressed: () => _resendVerificationEmail(email, password),
+                ),
               ),
             );
             return;
@@ -166,6 +170,46 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('エラー: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// 未認証時に確認メールを再送する（ログイン → 再送 → サインアウト）
+  Future<void> _resendVerificationEmail(String email, String password) async {
+    setState(() => _isLoading = true);
+    try {
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      final user = credential.user;
+      if (user == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('再送に失敗しました。')),
+        );
+        return;
+      }
+      await user.sendEmailVerification();
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('確認メールを再送しました。メールをご確認ください。'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('再送に失敗しました: ${e.message ?? e.code}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('再送に失敗しました: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
