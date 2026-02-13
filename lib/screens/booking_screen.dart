@@ -64,11 +64,11 @@ class _BookingScreenState extends State<BookingScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
+            ElevatedButton.icon(
               onPressed: _onIdentityVerificationPressed,
               icon: const Icon(Icons.verified_user),
               label: const Text('本人認証'),
-              style: OutlinedButton.styleFrom(
+              style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 20),
                 textStyle: const TextStyle(fontSize: 18),
               ),

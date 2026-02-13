@@ -28,7 +28,7 @@ class IdentityVerificationScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
+            ElevatedButton.icon(
               onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('マイナンバーカードを提出')),
@@ -37,7 +37,7 @@ class IdentityVerificationScreen extends StatelessWidget {
               },
               icon: const Icon(Icons.credit_card),
               label: const Text('マイナンバーカードを提出'),
-              style: OutlinedButton.styleFrom(
+              style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 20),
                 textStyle: const TextStyle(fontSize: 18),
               ),
